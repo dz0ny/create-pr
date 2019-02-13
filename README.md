@@ -25,7 +25,7 @@ if __name__ == "__main__":
     if not event.is_release:
         raise Exception("This event is not from release")
 
-    with commit(event, f"update_{event.release.tag_name}") as gh:
+    with commit(event, f"update_{event.release.tag_name}", env["PTA_TOKEN"]) as gh:
         versions = gh.get("bin/runtime/versions")
         versions.text: str = versions.text.replace("foo.bar", "def.bar")
         gh.add(versions, "Update image to latest version")

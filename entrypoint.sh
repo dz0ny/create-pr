@@ -2,12 +2,6 @@
 
 set -e
 
-# Ensure that the GITHUB_TOKEN secret is included
-if [[ -z "$GITHUB_TOKEN" ]]; then
-  echo "Set the GITHUB_TOKEN env variable."
-  exit 1
-fi
-
 # Ensure that the file path is present
 if [[ -z "$1" ]]; then
   echo "You must pass at least one argument to this action, the path to the patching recepie."

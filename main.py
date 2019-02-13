@@ -73,8 +73,13 @@ class File:
     sha: str  # "3d21ec53a331a6f037a91c368710b99387d012c1"
     url: str  # "https://api.github.com/repos/octokit/octokit.rb/contents/README.md"
 
-    def patch(self, message: str) -> dict:
-        return {"message": message, "content": File.content, "sha": File.sha}
+    def patch(self, message: str, branch: str) -> dict:
+        return {
+            "message": message,
+            "content": self.content.decode("utf8"),
+            "sha": self.sha,
+            "branch": branch,
+        }
 
     @property
     def text(self) -> str:
@@ -92,36 +97,52 @@ class File:
 class GitHub:
 
     http: requests.Session
+    api = "https://api.github.com"
 
-    def __init__(self, event: Event, branch: str, github_token: str):
+    def __init__(self, repo: str, branch: str, github_token: str):
         self.http = requests.Session()
         self.http.headers["Authorization"] = f"Token {github_token}"
         self.http.headers["Accept"] = "application/vnd.github.v3+json"
         self.branch = branch
-        self.event = event
+        self.repo = repo
 
-    def get(self, repo: str, path: str) -> File:
-        res = self.http.get(f"https://api.github.com/repos/{repo}/contents/{path}")
+    def get(self, path: str) -> File:
+        res = self.http.get(f"{self.api}/repos/{self.repo}/contents/{path}")
         res.raise_for_status()
         return File.fromJSON(res.json())
 
     def create_pr(self, title: str, body: str):
         res = self.http.post(
-            f"{self.event.base}/pulls",
+            f"{self.api}/repos/{self.repo}/pulls",
             json={"title": title, "body": body, "head": self.branch, "base": "master"},
         )
         res.raise_for_status()
         return res.json()
 
+    def create_branch(self):
+        res = self.http.get(f"{self.api}/repos/{self.repo}/git/refs/heads/master")
+        res.raise_for_status()
+        master = res.json()
+        res = self.http.post(
+            f"{self.api}/repos/{self.repo}/git/refs",
+            json={"ref": f"refs/heads/{self.branch}", "sha": master["object"]["sha"]},
+        )
+        res.raise_for_status()
+        return res.json()
+
     def add(self, file: File, message: str):
-        res = self.http.put(file.url, json=file.patch)
+        res = self.http.put(
+            f"{self.api}/repos/{self.repo}/contents/{file.path}",
+            json=file.patch(message, self.branch),
+        )
         res.raise_for_status()
         return res.json()
 
 
 @contextmanager
-def commit(event: Event, new_branch: str) -> "GitHub":
-    gh: GitHub = GitHub(event, new_branch, env["PTA_TOKEN"])
+def commit(repo: str, new_branch: str, token: str) -> "GitHub":
+    gh: GitHub = GitHub(repo, new_branch, token)
+    gh.create_branch()
     yield gh
 
 
@@ -133,7 +154,7 @@ if __name__ == "__main__":
     if not event.is_release:
         raise Exception("This event is not from release")
 
-    with commit(event, f"update_{event.release.tag_name}") as gh:
+    with commit("gh/repo", f"update_{event.release.tag_name}", env["PTA_TOKEN"]) as gh:
         versions = gh.get("bin/runtime/versions")
         versions.text: str = versions.text.replace("foo.bar", "def.bar")
         gh.add(versions, "Update image to latest version")

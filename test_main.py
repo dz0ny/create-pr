@@ -1,5 +1,6 @@
 from main import Event
 from main import File
+from main import GitHub
 from pathlib import Path
 import json
 
